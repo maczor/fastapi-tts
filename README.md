@@ -132,8 +132,47 @@ python3 pai-stt.py
 ```
 
 - **Hotkey:** `ctrl+shift` (hold to record, release to transcribe)
-- Requires macOS Accessibility permissions for the terminal app
 - Uses `pbcopy` + `osascript` to paste into the active window
+- Requires macOS **Accessibility** permissions for the Python binary (see below)
+
+### macOS Accessibility permissions
+
+`pai-stt` uses `osascript` to send keystrokes (`Cmd+V`) into the active window. The Python binary that runs the script must be allowed in:
+
+**System Settings → Privacy & Security → Accessibility**
+
+Add the resolved Python path (follow symlinks):
+
+```bash
+# find the real binary
+readlink -f .venv/bin/python
+# example output: /opt/homebrew/Cellar/python@3.14/.../bin/python3.14
+```
+
+### System service (macOS)
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-stt.plist
+```
+
+Management:
+
+```bash
+# Restart
+launchctl kickstart -k gui/$(id -u)/com.maczor.pai-stt
+
+# Stop
+launchctl kill SIGTERM gui/$(id -u)/com.maczor.pai-stt
+
+# Status
+launchctl print gui/$(id -u)/com.maczor.pai-stt
+
+# Unload
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-stt.plist
+
+# Logs
+tail -f ~/Library/Logs/pai-stt.log
+```
 
 ---
 
@@ -265,5 +304,44 @@ python3 pai-stt.py
 ```
 
 - **Skrót:** `ctrl+shift` (trzymaj = nagrywanie, puść = transkrypcja)
-- Wymaga uprawnień macOS Accessibility dla terminala
 - Używa `pbcopy` + `osascript` do wklejania w aktywne okno
+- Wymaga uprawnień macOS **Accessibility** dla binaria Pythona (patrz niżej)
+
+### Uprawnienia macOS Accessibility
+
+`pai-stt` używa `osascript` do wysyłania klawiszy (`Cmd+V`) w aktywne okno. Binarka Pythona uruchamiająca skrypt musi być dodana w:
+
+**Ustawienia systemowe → Prywatność i ochrona → Dostępność**
+
+Dodaj rzeczywistą ścieżkę Pythona (podążaj za symlinkami):
+
+```bash
+# znajdź rzeczywistą binarkę
+readlink -f .venv/bin/python
+# przykładowy wynik: /opt/homebrew/Cellar/python@3.14/.../bin/python3.14
+```
+
+### Serwis systemowy (macOS)
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-stt.plist
+```
+
+Zarządzanie:
+
+```bash
+# Restart
+launchctl kickstart -k gui/$(id -u)/com.maczor.pai-stt
+
+# Stop
+launchctl kill SIGTERM gui/$(id -u)/com.maczor.pai-stt
+
+# Status
+launchctl print gui/$(id -u)/com.maczor.pai-stt
+
+# Wyłącz
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-stt.plist
+
+# Logi
+tail -f ~/Library/Logs/pai-stt.log
+```
