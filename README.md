@@ -101,6 +101,40 @@ launchctl unload ~/Library/LaunchAgents/com.maczor.fastapi-tts.plist
 tail -f ~/Library/Logs/fastapi-tts.log
 ```
 
+## PAI TTS Bridge
+
+A lightweight HTTP bridge that receives voice notification requests and plays them through the local TTS server using `mpv`.
+
+```bash
+python3 pai-tts-bridge.py
+```
+
+Listens on `[::1]:8888`. Forward the port via SSH to receive notifications from a remote server:
+
+```bash
+ssh -R 8888:localhost:8888 user@server
+```
+
+Send a notification:
+
+```bash
+curl -X POST http://[::1]:8888/notify \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello from the server"}'
+```
+
+## PAI STT (Speech-to-Text)
+
+Push-to-talk transcription using ElevenLabs STT. Hold the hotkey, speak, release — the transcription is pasted into the active window.
+
+```bash
+python3 pai-stt.py
+```
+
+- **Hotkey:** `ctrl+shift` (hold to record, release to transcribe)
+- Requires macOS Accessibility permissions for the terminal app
+- Uses `pbcopy` + `osascript` to paste into the active window
+
 ---
 
 <a id="pl"></a>
@@ -199,3 +233,37 @@ launchctl unload ~/Library/LaunchAgents/com.maczor.fastapi-tts.plist
 # Logi
 tail -f ~/Library/Logs/fastapi-tts.log
 ```
+
+## PAI TTS Bridge
+
+Lekki bridge HTTP — odbiera żądania powiadomień głosowych i odtwarza je przez lokalny serwer TTS przy użyciu `mpv`.
+
+```bash
+python3 pai-tts-bridge.py
+```
+
+Nasłuchuje na `[::1]:8888`. Przekieruj port przez SSH, aby odbierać powiadomienia ze zdalnego serwera:
+
+```bash
+ssh -R 8888:localhost:8888 user@server
+```
+
+Wyślij powiadomienie:
+
+```bash
+curl -X POST http://[::1]:8888/notify \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Witaj z serwera"}'
+```
+
+## PAI STT (Speech-to-Text)
+
+Transkrypcja push-to-talk z ElevenLabs STT. Trzymaj skrót, mów, puść — transkrypcja wkleja się w aktywne okno.
+
+```bash
+python3 pai-stt.py
+```
+
+- **Skrót:** `ctrl+shift` (trzymaj = nagrywanie, puść = transkrypcja)
+- Wymaga uprawnień macOS Accessibility dla terminala
+- Używa `pbcopy` + `osascript` do wklejania w aktywne okno

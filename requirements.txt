@@ -2,3 +2,7 @@ fastapi>=0.115,<1
 uvicorn>=0.34,<1
 elevenlabs>=1.0,<2
 python-dotenv>=1.0,<2
+sounddevice
+numpy
+pynput
+requests
