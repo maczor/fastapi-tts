@@ -20,7 +20,7 @@ app = FastAPI(title="FastAPI TTS Server")
 
 class TTSRequest(BaseModel):
     text: str
-    voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    voice_id: str = "Cb8NLd0sUB8jI4MW2f9M"
     model_id: str = "eleven_v3"
     output_format: str = "mp3_44100_128"
 

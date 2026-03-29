@@ -27,14 +27,14 @@ class _Bridge(HTTPServer):
 TTS_URL = "http://localhost:8008/tts/stream"
 BRIDGE_PORT = 8888
 
-_speech_queue: queue.Queue[str] = queue.Queue()
+_speech_queue: queue.Queue[dict] = queue.Queue()
 
 
 def _worker() -> None:
     while True:
-        text = _speech_queue.get()
+        item = _speech_queue.get()
         try:
-            body = json.dumps({"text": text}).encode()
+            body = json.dumps(item).encode()
             req = urllib.request.Request(
                 TTS_URL,
                 data=body,
@@ -43,7 +43,7 @@ def _worker() -> None:
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 proc = subprocess.Popen(
-                    ["mpv", "--no-terminal", "--demuxer=lavf", "-"],
+                    ["/opt/homebrew/bin/mpv", "--no-terminal", "--demuxer=lavf", "-"],
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -81,9 +81,13 @@ class Handler(BaseHTTPRequestHandler):
 
         message = data.get("message", "")
         voice_enabled = data.get("voice_enabled", True)
+        voice_id = data.get("voice_id")
 
         if voice_enabled and message:
-            _speech_queue.put(message)
+            item = {"text": message}
+            if voice_id:
+                item["voice_id"] = voice_id
+            _speech_queue.put(item)
 
         self.send_response(200)
         self.end_headers()
