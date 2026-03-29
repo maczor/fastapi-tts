@@ -41,7 +41,7 @@ def _worker() -> None:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 proc = subprocess.Popen(
                     ["/opt/homebrew/bin/mpv", "--no-terminal", "--demuxer=lavf", "-"],
                     stdin=subprocess.PIPE,
