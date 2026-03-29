@@ -11,9 +11,7 @@ A proxy to the ElevenLabs API exposing REST endpoints for text-to-speech convers
 ## Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 Set your API key in `.env`:
@@ -46,6 +44,11 @@ curl http://localhost:8008/voices
 curl -X POST http://localhost:8008/tts \
   -H "Content-Type: application/json" \
   -d '{"text":"Hello, this is a test"}' --output speech.mp3
+
+# with custom voice
+curl -X POST http://localhost:8008/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Hello", "voice_id":"your-voice-id"}' --output speech.mp3
 
 curl -X POST http://localhost:8008/tts/stream \
   -H "Content-Type: application/json" \
@@ -121,6 +124,36 @@ Send a notification:
 curl -X POST http://[::1]:8888/notify \
   -H "Content-Type: application/json" \
   -d '{"message":"Hello from the server"}'
+
+# with custom voice
+curl -X POST http://[::1]:8888/notify \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello", "voice_id":"your-voice-id"}'
+```
+
+### System service (macOS)
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-tts-bridge.plist
+```
+
+Management:
+
+```bash
+# Restart
+launchctl kickstart -k gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Stop
+launchctl kill SIGTERM gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Status
+launchctl print gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Unload
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-tts-bridge.plist
+
+# Logs
+tail -f ~/Library/Logs/pai-tts-bridge.log
 ```
 
 ## PAI STT (Speech-to-Text)
@@ -183,9 +216,7 @@ Proxy do ElevenLabs API udostępniający endpointy REST do konwersji tekstu na m
 ## Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 Ustaw klucz API w pliku `.env`:
@@ -218,6 +249,11 @@ curl http://localhost:8008/voices
 curl -X POST http://localhost:8008/tts \
   -H "Content-Type: application/json" \
   -d '{"text":"Cześć, to jest test"}' --output speech.mp3
+
+# z wybranym głosem
+curl -X POST http://localhost:8008/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Cześć", "voice_id":"your-voice-id"}' --output speech.mp3
 
 curl -X POST http://localhost:8008/tts/stream \
   -H "Content-Type: application/json" \
@@ -293,6 +329,36 @@ Wyślij powiadomienie:
 curl -X POST http://[::1]:8888/notify \
   -H "Content-Type: application/json" \
   -d '{"message":"Witaj z serwera"}'
+
+# z wybranym głosem
+curl -X POST http://[::1]:8888/notify \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Witaj", "voice_id":"your-voice-id"}'
+```
+
+### Serwis systemowy (macOS)
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-tts-bridge.plist
+```
+
+Zarządzanie:
+
+```bash
+# Restart
+launchctl kickstart -k gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Stop
+launchctl kill SIGTERM gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Status
+launchctl print gui/$(id -u)/com.maczor.pai-tts-bridge
+
+# Wyłącz
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.maczor.pai-tts-bridge.plist
+
+# Logi
+tail -f ~/Library/Logs/pai-tts-bridge.log
 ```
 
 ## PAI STT (Speech-to-Text)
