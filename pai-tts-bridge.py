@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 class _Bridge(HTTPServer):
-    address_family = socket.AF_INET6
+    pass
 
 TTS_URL = "http://localhost:8008/tts/stream"
 BRIDGE_PORT = 8888
@@ -74,9 +74,9 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(raw)
-        except Exception:
-            self.send_response(400)
-            self.end_headers()
+        except Exception as e:
+            print(f"[bridge] invalid JSON: {e}", flush=True)
+            self._json_error(400, f"invalid JSON: {e}")
             return
 
         message = data.get("message", "")
@@ -92,13 +92,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def _json_error(self, code: int, message: str) -> None:
+        body = json.dumps({"error": message}).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, fmt, *args):
-        pass
+        print(f"[bridge] {fmt % args}", flush=True)
 
 
 if __name__ == "__main__":
-    server = _Bridge(("::1", BRIDGE_PORT), Handler)
-    print(f"[bridge] listening on ::1:{BRIDGE_PORT} → TTS at {TTS_URL}")
+    server = _Bridge(("127.0.0.1", BRIDGE_PORT), Handler)
+    print(f"[bridge] listening on 127.0.0.1:{BRIDGE_PORT} → TTS at {TTS_URL}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
