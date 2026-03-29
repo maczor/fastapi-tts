@@ -11,5 +11,5 @@ dependencies = [
     "sounddevice",
     "numpy",
     "pynput",
-    "requests",
+    "websockets",
 ]

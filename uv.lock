@@ -185,9 +185,9 @@ dependencies = [
     { name = "numpy" },
     { name = "pynput" },
     { name = "python-dotenv" },
-    { name = "requests" },
     { name = "sounddevice" },
     { name = "uvicorn" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -197,9 +197,9 @@ requires-dist = [
     { name = "numpy" },
     { name = "pynput" },
     { name = "python-dotenv", specifier = ">=1.0,<2" },
-    { name = "requests" },
     { name = "sounddevice" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
+    { name = "websockets" },
 ]
 
 [[package]]

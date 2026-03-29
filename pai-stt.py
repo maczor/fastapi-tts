@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 PAI STT — push-to-talk na Macu, wkleja transkrypcję do aktywnego okna.
+Używa ElevenLabs Scribe v2 Realtime (WebSocket) dla minimalnej latencji.
 
-Wymagania:
-    pip install sounddevice numpy pynput requests
+Mikrofon otwierany tylko na czas nagrywania — pomarańczowa kropka macOS
+pojawia się wyłącznie gdy trzymasz hotkey.
 
 Uprawnienia macOS:
     System Settings → Privacy & Security → Accessibility → dodaj swój terminal lub Python
@@ -16,17 +17,16 @@ Użycie:
     Trzymaj ctrl+shift → mów → puść → tekst pojawia się w aktywnym oknie
 """
 
-import concurrent.futures
-import io
+import base64
+import json
 import os
 import subprocess
 import sys
 import threading
-import wave
 
 import numpy as np
-import requests
 import sounddevice as sd
+import websockets.sync.client as ws_client
 from pynput import keyboard
 from dotenv import load_dotenv
 
@@ -35,52 +35,78 @@ load_dotenv()
 API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 SAMPLE_RATE = 16000
 CHANNELS = 1
+WS_URL = (
+    f"wss://api.elevenlabs.io/v1/speech-to-text/realtime"
+    f"?model_id=scribe_v2_realtime"
+    f"&audio_format=pcm_16000"
+    f"&language_code=pl"
+    f"&commit_strategy=manual"
+)
 
 _recording = False
-_chunks: list[np.ndarray] = []
+_ws = None
+_stream = None
+_ws_lock = threading.Lock()
 _lock = threading.Lock()
 
-_CTRL  = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
+_CTRL = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
 _SHIFT = {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}
 _held: set = set()
 
-_session = requests.Session()
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+# ── websocket ────────────────────────────────────────────────────────────────
+
+def _connect() -> ws_client.ClientConnection:
+    return ws_client.connect(
+        WS_URL,
+        additional_headers={"xi-api-key": API_KEY},
+    )
 
 
-# ── audio ─────────────────────────────────────────────────────────────────────
+def _send_chunk(audio_f32: np.ndarray, commit: bool = False) -> None:
+    with _ws_lock:
+        if _ws is None:
+            return
+        pcm = np.clip(audio_f32 * 32767, -32768, 32767).astype(np.int16)
+        msg = {
+            "message_type": "input_audio_chunk",
+            "audio_base_64": base64.b64encode(pcm.tobytes()).decode(),
+            "commit": commit,
+        }
+        try:
+            _ws.send(json.dumps(msg))
+        except Exception as e:
+            print(f"[stt] send error: {e}", flush=True)
+
+
+def _recv_committed() -> str:
+    """Read messages until committed_transcript, return text."""
+    with _ws_lock:
+        conn = _ws
+    if conn is None:
+        return ""
+    try:
+        while True:
+            raw = conn.recv(timeout=10)
+            data = json.loads(raw)
+            mt = data.get("message_type", "")
+            if mt == "committed_transcript":
+                return data.get("text", "").strip()
+            if "error" in mt:
+                print(f"[stt] ws error: {data}", flush=True)
+                return ""
+    except Exception as e:
+        print(f"[stt] recv error: {e}", flush=True)
+        return ""
+
+
+# ── audio ────────────────────────────────────────────────────────────────────
 
 def _record_callback(indata, frames, time, status):
-    with _lock:
-        if _recording:
-            _chunks.append(indata.copy())
+    _send_chunk(indata.copy())
 
 
-def _to_wav(chunks: list[np.ndarray]) -> bytes:
-    audio = np.concatenate(chunks, axis=0)
-    pcm = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(np.dtype(np.int16).itemsize)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(pcm.tobytes())
-    return buf.getvalue()
-
-
-# ── transcription + paste ─────────────────────────────────────────────────────
-
-def _transcribe(wav_bytes: bytes) -> str:
-    resp = _session.post(
-        "https://api.elevenlabs.io/v1/speech-to-text",
-        headers={"xi-api-key": API_KEY},
-        files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-        data={"model_id": "scribe_v1"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json().get("text", "").strip()
-
+# ── paste ────────────────────────────────────────────────────────────────────
 
 def _paste(text: str) -> None:
     subprocess.run(["pbcopy"], input=text.encode(), check=True)
@@ -91,44 +117,73 @@ def _paste(text: str) -> None:
     )
 
 
-# ── state machine ─────────────────────────────────────────────────────────────
+# ── state machine ────────────────────────────────────────────────────────────
 
 def _start_recording() -> None:
-    global _recording
+    global _recording, _ws, _stream
+    with _ws_lock:
+        try:
+            _ws = _connect()
+            raw = _ws.recv(timeout=5)
+            data = json.loads(raw)
+            if data.get("message_type") != "session_started":
+                print(f"[stt] unexpected: {data}", flush=True)
+        except Exception as e:
+            print(f"[stt] connect error: {e}", flush=True)
+            _ws = None
+            return
+
+    _stream = sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype="float32",
+        callback=_record_callback,
+    )
+    _stream.start()
+
     with _lock:
-        _chunks.clear()
         _recording = True
     print("[stt] ● nagrywanie...", flush=True)
 
 
-def _process() -> None:
-    global _recording
+def _stop_and_paste() -> None:
+    global _recording, _ws, _stream
     with _lock:
         if not _recording:
-            return                  # another release already handled this
+            return
         _recording = False
-        chunks = list(_chunks)
-        _chunks.clear()
 
-    if not chunks or len(np.concatenate(chunks)) < SAMPLE_RATE * 0.3:
-        print("[stt] (za krótkie nagranie, pomiń)", flush=True)
-        return
+    # stop mic first — orange dot disappears immediately
+    if _stream:
+        try:
+            _stream.stop()
+            _stream.close()
+        except Exception:
+            pass
+        _stream = None
+
+    # send final commit
+    _send_chunk(np.zeros((1, CHANNELS), dtype=np.float32), commit=True)
 
     print("[stt] ◼ przetwarzanie...", flush=True)
-    try:
-        text = _transcribe(_to_wav(chunks))
-        if text:
-            print(f"[stt] → {text!r}", flush=True)
-            _paste(text)
-        else:
-            print("[stt] (brak transkrypcji)", flush=True)
-    except requests.HTTPError as e:
-        print(f"[stt] API error: {e}", flush=True)
-    except Exception as e:
-        print(f"[stt] błąd: {e}", flush=True)
+    text = _recv_committed()
+
+    with _ws_lock:
+        if _ws:
+            try:
+                _ws.close()
+            except Exception:
+                pass
+            _ws = None
+
+    if text:
+        print(f"[stt] → {text!r}", flush=True)
+        _paste(text)
+    else:
+        print("[stt] (brak transkrypcji)", flush=True)
 
 
-# ── hotkey listener ───────────────────────────────────────────────────────────
+# ── hotkey listener ──────────────────────────────────────────────────────────
 
 def _hotkey_active():
     return bool(_held & _CTRL) and bool(_held & _SHIFT)
@@ -143,22 +198,16 @@ def _on_press(key):
 def _on_release(key):
     _held.discard(key)
     if _recording and not _hotkey_active():
-        _executor.submit(_process)
+        threading.Thread(target=_stop_and_paste, daemon=True).start()
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# ── main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     if not API_KEY:
         print("[stt] BŁĄD: ustaw ELEVENLABS_API_KEY", file=sys.stderr)
         sys.exit(1)
 
-    with sd.InputStream(
-        samplerate=SAMPLE_RATE,
-        channels=CHANNELS,
-        dtype="float32",
-        callback=_record_callback,
-    ):
-        print("[stt] gotowy — ctrl+shift żeby nagrywać", flush=True)
-        with keyboard.Listener(on_press=_on_press, on_release=_on_release) as lst:
-            lst.join()
+    print("[stt] gotowy — ctrl+shift żeby nagrywać (scribe_v2_realtime)", flush=True)
+    with keyboard.Listener(on_press=_on_press, on_release=_on_release) as lst:
+        lst.join()
